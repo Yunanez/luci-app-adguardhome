@@ -8,7 +8,7 @@ on:
 env:
   PLUGIN_NAME: luci-app-adguardhome
   IStoreOS_BRANCH: istoreos-25.12
-  # 仅用于产物命名，不参与构建逻辑，避免与系统内部变量冲突
+  # 仅用于产物命名，绝对不参与构建逻辑，避免与系统内部变量重名
   ARCHIVE_ARCH: x86_64
 
 jobs:
@@ -39,7 +39,7 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: 复制插件到自定义目录（避免官方包冲突）
+      - name: 复制插件到自定义目录
         run: |
           mkdir -p openwrt/package/custom
           cp -r plugin/$PLUGIN_NAME openwrt/package/custom/
@@ -47,10 +47,10 @@ jobs:
       - name: 生成配置并启用插件
         run: |
           cd openwrt
-          # 清除可能冲突的环境变量，避免干扰构建系统
-          unset TARGET_ARCH ARCH CFLAGS LDFLAGS
+          # 彻底清除所有可能干扰构建系统的环境变量
+          unset TARGET_ARCH ARCH CFLAGS CXXFLAGS LDFLAGS
           
-          # 写入 x86_64 通用设备基础架构配置
+          # 写入x86_64通用设备基础架构配置
           cat > .config << EOF
           CONFIG_TARGET_x86=y
           CONFIG_TARGET_x86_64=y
@@ -66,10 +66,10 @@ jobs:
           # 重新校验补全所有依赖配置
           make defconfig V=s
 
-      - name: 编译插件（输出详细日志）
+      - name: 编译插件
         run: |
           cd openwrt
-          unset TARGET_ARCH ARCH CFLAGS LDFLAGS
+          unset TARGET_ARCH ARCH CFLAGS CXXFLAGS LDFLAGS
           make package/custom/$PLUGIN_NAME/clean
           make package/custom/$PLUGIN_NAME/compile -j$(nproc) V=s
 
