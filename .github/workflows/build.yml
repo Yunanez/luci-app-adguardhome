@@ -29,14 +29,16 @@ jobs:
           cp -r src/luci-app-adguardhome openwrt-sdk/package/
           ls openwrt-sdk/package/luci-app-adguardhome/
 
-      - name: Compile package (non-interactive)
+      - name: Compile & Install (generate IPK)
         run: |
           cd openwrt-sdk
           export TERM=dumb
           ./scripts/feeds update -a
           ./scripts/feeds install luci-compat
           make defconfig
-          make package/luci-app-adguardhome/compile V=s
+          make package/luci-app-adguardhome/clean
+          make package/luci-app-adguardhome/compile
+          make package/luci-app-adguardhome/install V=s
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
