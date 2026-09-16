@@ -78,19 +78,7 @@ jobs:
 
       - name: 生成标准 control 控制文件
         run: |
-          cat > pkg/control/control << 'EOF'
-Package: luci-app-adguardhome
-Version: 1.0.0
-Architecture: x86_64
-Maintainer: TanZhiwen2001
-Section: luci
-Priority: optional
-Depends: luci-base, adguardhome
-Description: LuCI App AdGuard Home
- AdGuard Home 管理界面，支持核心更新、日志查看、DNS 重定向。
- .
-
-EOF
+          printf "Package: luci-app-adguardhome\nVersion: 1.0.0\nArchitecture: x86_64\nMaintainer: TanZhiwen2001\nSection: luci\nPriority: optional\nDepends: luci-base, adguardhome\nDescription: LuCI App AdGuard Home\n AdGuard Home 管理界面，支持核心更新、日志查看、DNS 重定向。\n .\n\n" > pkg/control/control
 
       - name: 生成 md5 校验文件
         run: |
