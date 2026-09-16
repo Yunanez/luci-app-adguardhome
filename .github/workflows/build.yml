@@ -1,4 +1,4 @@
-name: Build luci-app-adguardhome IPK
+name: Build luci-app-adguardhome APK for OpenWrt 25.12
 on:
   workflow_dispatch
 
@@ -9,12 +9,12 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt update
-          sudo apt install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev wget tar
+          sudo apt install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev wget tar zstd
 
-      - name: Download & Extract OpenWrt 23.05.3 SDK x86_64 (Tuna mirror)
+      - name: Download & Extract OpenWrt 25.12 SDK x86_64 (USTC mirror)
         run: |
-          wget --tries=10 https://mirrors.tuna.tsinghua.edu.cn/openwrt/releases/23.05.3/targets/x86/64/openwrt-sdk-23.05.3-x86-64_gcc-12.3.0_musl.Linux-x86_64.tar.xz
-          tar -xf openwrt-sdk*.tar.xz
+          wget --tries=10 https://mirrors.ustc.edu.cn/openwrt/releases/25.12.0/targets/x86/64/openwrt-sdk-25.12.0-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst
+          tar -I zstd -xf openwrt-sdk*.tar.zst
           ls -la
           SDK_DIR=$(find . -maxdepth 1 -type d -name "openwrt-sdk-*")
           mv "$SDK_DIR" openwrt-sdk
@@ -29,7 +29,7 @@ jobs:
           cp -r src/luci-app-adguardhome openwrt-sdk/package/
           ls openwrt-sdk/package/luci-app-adguardhome/
 
-      - name: Build package and generate IPK
+      - name: Build package and generate APK
         run: |
           cd openwrt-sdk
           export TERM=dumb
@@ -37,13 +37,13 @@ jobs:
           ./scripts/feeds install luci-compat
           make defconfig
           make package/luci-app-adguardhome/clean
-          make package/luci-app-adguardhome/compile
-          make package/luci-app-adguardhome/install
-          make package/luci-app-adguardhome/package V=s
+          make -j1 V=sc package/luci-app-adguardhome/compile
+          make -j1 V=sc package/luci-app-adguardhome/install
+          make -j1 V=sc package/luci-app-adguardhome/package
           ls -la bin/packages/x86_64/luci/
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: luci-app-adguardhome-ipk
-          path: openwrt-sdk/bin/packages/x86_64/luci/luci-app-adguardhome*.ipk
+          name: luci-app-adguardhome-apk
+          path: openwrt-sdk/bin/packages/x86_64/luci/luci-app-adguardhome*.apk
