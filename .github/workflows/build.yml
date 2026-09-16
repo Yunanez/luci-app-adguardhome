@@ -11,7 +11,7 @@ jobs:
           sudo apt update
           sudo apt install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev wget tar zstd
 
-      - name: Download & Extract OpenWrt 25.12 SDK x86_64 (USTC mirror)
+      - name: Download & Extract OpenWrt 25.12.0 SDK x86_64 (USTC mirror)
         run: |
           wget --tries=10 https://mirrors.ustc.edu.cn/openwrt/releases/25.12.0/targets/x86/64/openwrt-sdk-25.12.0-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst
           tar -I zstd -xf openwrt-sdk*.tar.zst
@@ -24,21 +24,26 @@ jobs:
         with:
           path: src
 
-      - name: Copy plugin into SDK package
+      - name: Copy plugin into SDK package & list files
         run: |
           cp -r src/luci-app-adguardhome openwrt-sdk/package/
-          ls openwrt-sdk/package/luci-app-adguardhome/
+          echo "==== package dir files ===="
+          ls -la openwrt-sdk/package/luci-app-adguardhome/
 
-      - name: Build package and generate APK
+      - name: Build package
         run: |
           cd openwrt-sdk
           export TERM=dumb
           ./scripts/feeds update -a
           ./scripts/feeds install luci-compat
           make defconfig
+          echo "==== try to clean ===="
           make package/luci-app-adguardhome/clean
+          echo "==== try compile ===="
           make -j1 V=sc package/luci-app-adguardhome/compile
+          echo "==== try install ===="
           make -j1 V=sc package/luci-app-adguardhome/install
+          echo "==== try package ===="
           make -j1 V=sc package/luci-app-adguardhome/package
           ls -la bin/packages/x86_64/luci/
 
