@@ -19,6 +19,13 @@ jobs:
         with:
           path: plugin
 
+      - name: 查看插件目录结构（排查用）
+        run: |
+          echo "=== plugin 目录结构 ==="
+          ls -la plugin/
+          echo "=== 查找 Makefile ==="
+          find plugin -name Makefile
+
       - name: 安装全套编译依赖
         run: |
           sudo apt update
@@ -38,40 +45,36 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: 复制插件到自定义目录（修复路径错误）
+      - name: 复制插件到自定义目录（稳妥版）
         run: |
-          mkdir -p openwrt/package/custom
-          # 核心修复：直接将plugin目录整体复制并重命名为插件名
-          cp -r plugin openwrt/package/custom/$PLUGIN_NAME
+          # 先创建目标插件目录
+          mkdir -p openwrt/package/custom/$PLUGIN_NAME
+          # 把plugin目录下的所有文件完整复制到目标目录
+          cp -rf plugin/* openwrt/package/custom/$PLUGIN_NAME/
+          # 复制隐藏文件（如果有）
+          cp -rf plugin/.* openwrt/package/custom/$PLUGIN_NAME/ 2>/dev/null || true
+          # 验证Makefile是否存在
+          ls -la openwrt/package/custom/$PLUGIN_NAME/Makefile
 
       - name: 生成配置并启用插件
         run: |
           cd openwrt
           unset TARGET_ARCH ARCH CFLAGS CXXFLAGS LDFLAGS
           
-          # 写入x86_64通用设备基础架构配置
           cat > .config << EOF
           CONFIG_TARGET_x86=y
           CONFIG_TARGET_x86_64=y
           CONFIG_TARGET_x86_64_DEVICE_generic=y
           EOF
           
-          # 第一次：生成完整基础配置
           make defconfig V=s
-          
-          # 追加插件启用配置
           echo "CONFIG_PACKAGE_$PLUGIN_NAME=m" >> .config
-          
-          # 第二次：校验配置并自动补全所有依赖项
           make defconfig V=s
 
-      - name: 编译插件（单线程详细日志，方便排查）
+      - name: 编译插件（单线程详细日志）
         run: |
           cd openwrt
           unset TARGET_ARCH ARCH CFLAGS CXXFLAGS LDFLAGS
-          # 先验证插件Makefile是否存在
-          ls -la package/custom/$PLUGIN_NAME/Makefile
-          # 单线程编译输出最详细日志，出错直接定位
           make package/custom/$PLUGIN_NAME/clean -j1 V=sc
           make package/custom/$PLUGIN_NAME/compile -j1 V=sc
 
