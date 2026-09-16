@@ -83,21 +83,3 @@ jobs:
         with:
           name: ${{ env.PLUGIN_NAME }}_${{ env.ARCHIVE_ARCH }}_APK
           path: ${{ env.PLUGIN_NAME }}_${{ env.ARCHIVE_ARCH }}.apk
-          # 验证包
-          ls -lh ${PLUGIN_NAME}_${ARCHIVE_ARCH}.apk
-
-      - name: 上传 APK 产物
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ env.PLUGIN_NAME }}_${{ env.ARCHIVE_ARCH }}_APK
-          path: ${{ env.PLUGIN_NAME }}_${{ env.ARCHIVE_ARCH }}.apk
-      - name: 收集 APK 产物
-        run: |
-          mkdir -p output
-          find openwrt/bin/packages -name "${PLUGIN_NAME}*.apk" -exec cp {} output/ \;
-
-      - name: 上传编译结果
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ env.PLUGIN_NAME }}_${{ env.ARCHIVE_ARCH }}_APK
-          path: output/
