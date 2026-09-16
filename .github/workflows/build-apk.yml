@@ -20,62 +20,69 @@ jobs:
         with:
           path: repo
 
+      - name: 下载官方 ipkg-build 打包工具
+        run: |
+          wget -O ipkg-build https://git.openwrt.org/?p=openwrt.git;a=blob_plain;f=scripts/ipkg-build;hb=HEAD
+          chmod 755 ipkg-build
+
       - name: 创建标准打包目录
         run: |
           rm -rf pkg
           mkdir -p pkg/control
-          mkdir -p pkg/data/usr/lib/lua/luci
-          mkdir -p pkg/data/usr/lib/lua/luci/i18n
+          mkdir -p pkg/usr/lib/lua/luci
+          mkdir -p pkg/usr/lib/lua/luci/i18n
 
-      - name: 复制插件文件（适配嵌套目录）
+      - name: 复制插件文件
         run: |
           SRC_DIR="repo/luci-app-adguardhome"
           
-          # 1. 完整复制 LuCI 程序目录，自动保留所有子目录层级
-          if [ -d "$SRC_DIR/luasrc" ]; then
-            cp -rf "$SRC_DIR/luasrc"/* pkg/data/usr/lib/lua/luci/
-          fi
+          # 复制 LuCI 程序文件（保留完整目录层级）
+          cp -rf "$SRC_DIR/luasrc"/* pkg/usr/lib/lua/luci/
           
-          # 2. 复制 root 目录文件（直接映射到系统根路径）
-          if [ -d "$SRC_DIR/root" ]; then
-            cp -rf "$SRC_DIR/root"/* pkg/data/
-          fi
+          # 复制系统文件（root 目录直接映射）
+          cp -rf "$SRC_DIR/root"/* pkg/
           
-          # 3. 复制中文语言文件
+          # 复制中文语言文件
           if [ -f "$SRC_DIR/po/zh-cn/adguardhome.po" ]; then
-            cp -f "$SRC_DIR/po/zh-cn/adguardhome.po" pkg/data/usr/lib/lua/luci/i18n/adguardhome.zh-cn.po
+            cp -f "$SRC_DIR/po/zh-cn/adguardhome.po" pkg/usr/lib/lua/luci/i18n/adguardhome.zh-cn.po
           fi
 
-      - name: 统一修复文件权限
+      - name: 修复文件权限
         run: |
-          # Lua 脚本设为 644 权限
-          find pkg/data -name "*.lua" -exec chmod 644 {} \;
-          # 启动脚本、Shell 工具设为 755 执行权限
-          find pkg/data/etc/init.d -type f -exec chmod 755 {} \;
-          find pkg/data/usr/share/AdGuardHome -type f -name "*.sh" -exec chmod 755 {} \;
+          # 脚本文件赋予执行权限
+          find pkg -name "*.lua" -exec chmod 644 {} \;
+          find pkg/etc/init.d -type f -exec chmod 755 {} \;
+          find pkg/usr/share/AdGuardHome -type f -name "*.sh" -exec chmod 755 {} \;
           # 统一目录权限
-          find pkg/data -type d -exec chmod 755 {} \;
+          find pkg -type d -exec chmod 755 {} \;
 
-      - name: 生成标准 control 控制文件
+      - name: 生成标准 control 文件
         run: |
-          printf "Package: luci-app-adguardhome\nVersion: 1.0.0\nArchitecture: x86_64\nMaintainer: Custom Build\nSection: luci\nPriority: optional\nDepends: luci-base\nDescription: LuCI App AdGuard Home\n AdGuard Home 管理界面，支持核心更新、日志查看、DNS 重定向。\n .\n\n" > pkg/control/control
+          cat > pkg/control/control << 'EOF'
+Package: luci-app-adguardhome
+Version: 1.0.0
+Architecture: x86_64
+Maintainer: Custom Build
+Section: luci
+Priority: optional
+Depends: luci-base
+Description: LuCI App AdGuard Home
+ AdGuard Home 管理界面，支持核心更新、日志查看、DNS 重定向。
+ .
+EOF
 
-      - name: 生成 md5 校验文件
+      - name: 官方工具打包
         run: |
-          cd pkg/data
-          find . -type f | sort | xargs md5sum > ../control/md5sums
-          cd ../../
-
-      - name: 标准格式打包 APK
-        run: |
-          cd pkg
-          printf "2.0\n" > debian-binary
-          cd control && tar --format=ustar -czf ../control.tar.gz . && cd ..
-          cd data && tar --format=ustar -czf ../data.tar.gz . && cd ..
-          tar --format=ustar -cf ../${PLUGIN_NAME}_${ARCHIVE_ARCH}.apk debian-binary control.tar.gz data.tar.gz
-          cd ..
+          # 使用官方 ipkg-build 打包，指定所有者为 root
+          ./ipkg-build -o root -g root pkg .
           
+          # 重命名为 iStoreOS 兼容的 apk 后缀
+          mv luci-app-adguardhome_1.0.0_x86_64.ipk ${PLUGIN_NAME}_${ARCHIVE_ARCH}.apk
+          
+          # 验证包
           ls -lh ${PLUGIN_NAME}_${ARCHIVE_ARCH}.apk
+          echo "=== 包内文件结构 ==="
+          tar -tf ${PLUGIN_NAME}_${ARCHIVE_ARCH}.apk
 
       - name: 上传 APK 产物
         uses: actions/upload-artifact@v4
