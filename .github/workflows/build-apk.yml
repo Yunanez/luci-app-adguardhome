@@ -55,13 +55,13 @@ jobs:
           CONFIG_TARGET_x86_64_DEVICE_generic=y
           EOF
           
-          # 编译配置工具并生成完整默认配置
+          # 第一次：生成完整基础配置
           make defconfig V=s
           
-          # 启用自定义插件为模块编译（修正配置工具路径）
-          ./scripts/config/conf --set CONFIG_PACKAGE_$PLUGIN_NAME m
+          # 直接追加插件启用配置（标准方式，替代错误的conf --set）
+          echo "CONFIG_PACKAGE_$PLUGIN_NAME=m" >> .config
           
-          # 重新校验补全所有依赖配置
+          # 第二次：校验配置并自动补全所有依赖项
           make defconfig V=s
 
       - name: 编译插件
