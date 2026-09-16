@@ -33,55 +33,44 @@ jobs:
         run: |
           rm -rf pkg
           mkdir -p pkg/control
-          # LuCI 程序目录
           mkdir -p pkg/data/usr/lib/lua/luci/controller
           mkdir -p pkg/data/usr/lib/lua/luci/model/cbi
           mkdir -p pkg/data/usr/lib/lua/luci/view
-          # 系统文件目录
           mkdir -p pkg/data/etc/config
           mkdir -p pkg/data/etc/init.d
           mkdir -p pkg/data/usr/bin
-          # 语言文件目录
           mkdir -p pkg/data/usr/lib/lua/luci/i18n
 
       - name: 复制插件文件到标准路径
         run: |
           SRC_DIR="repo/luci-app-adguardhome"
           
-          # 1. 复制 LuCI 控制器
           if [ -d "$SRC_DIR/luasrc/controller" ]; then
             cp -f "$SRC_DIR"/luasrc/controller/*.lua pkg/data/usr/lib/lua/luci/controller/
           fi
           
-          # 2. 复制 CBI 配置模型
           if [ -d "$SRC_DIR/luasrc/model/cbi" ]; then
             cp -f "$SRC_DIR"/luasrc/model/cbi/*.lua pkg/data/usr/lib/lua/luci/model/cbi/
           fi
           
-          # 3. 复制页面视图
           if [ -d "$SRC_DIR/luasrc/view" ]; then
             cp -f "$SRC_DIR"/luasrc/view/*.htm pkg/data/usr/lib/lua/luci/view/ 2>/dev/null || true
             cp -f "$SRC_DIR"/luasrc/view/*.html pkg/data/usr/lib/lua/luci/view/ 2>/dev/null || true
           fi
           
-          # 4. 复制系统文件（root 目录直接映射到系统根目录）
           if [ -d "$SRC_DIR/root" ]; then
             cp -rf "$SRC_DIR"/root/* pkg/data/
           fi
           
-          # 5. 复制中文语言文件
           if [ -f "$SRC_DIR/po/zh-cn/adguardhome.po" ]; then
             cp -f "$SRC_DIR/po/zh-cn/adguardhome.po" pkg/data/usr/lib/lua/luci/i18n/adguardhome.zh-cn.po
           fi
 
       - name: 统一修复文件权限
         run: |
-          # Lua 脚本设为 644 权限
           find pkg/data -name "*.lua" -exec chmod 644 {} \;
-          # 启动脚本、可执行文件设为 755 权限
           find pkg/data/etc/init.d -type f -exec chmod 755 {} \;
           find pkg/data/usr/bin -type f -exec chmod 755 {} \;
-          # 统一目录权限
           find pkg/data -type d -exec chmod 755 {} \;
           
           echo "=== 最终数据文件列表 ==="
@@ -114,29 +103,15 @@ EOF
       - name: 标准格式打包 APK
         run: |
           cd pkg
-          
-          # 1. 生成版本标识文件（严格只有 2.0 + 换行，opkg 强制要求）
           printf "2.0\n" > debian-binary
-          
-          # 2. 打包控制文件（gzip 压缩，内部为根路径）
-          cd control
-          tar --format=ustar -czf ../control.tar.gz .
+          cd control && tar --format=ustar -czf ../control.tar.gz . && cd ..
+          cd data && tar --format=ustar -czf ../data.tar.gz . && cd ..
+          tar --format=ustar -cf ../${PLUGIN_NAME}_${ARCHIVE_ARCH}.apk debian-binary control.tar.gz data.tar.gz
           cd ..
           
-          # 3. 打包数据文件（gzip 压缩，内部为根路径）
-          cd data
-          tar --format=ustar -czf ../data.tar.gz .
-          cd ..
-          
-          # 4. 外层打包（必须 ustar 旧格式，兼容 opkg 解析器）
-          tar --format=ustar -cf ../${PLUGIN_NAME}_${ARCHIVE_ARCH}.apk \
-            debian-binary control.tar.gz data.tar.gz
-          cd ..
-          
-          # 验证包结构
           echo "=== 生成的 APK 包信息 ==="
           ls -lh ${PLUGIN_NAME}_${ARCHIVE_ARCH}.apk
-          echo "=== 包内文件顺序（必须严格对应） ==="
+          echo "=== 包内文件顺序 ==="
           tar -tf ${PLUGIN_NAME}_${ARCHIVE_ARCH}.apk
 
       - name: 上传 APK 产物
