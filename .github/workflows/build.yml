@@ -1,6 +1,6 @@
 name: Build luci-app-adguardhome IPK
 on:
-  workflow_dispatch:
+  workflow_dispatch
 
 jobs:
   build:
@@ -11,11 +11,13 @@ jobs:
           sudo apt update
           sudo apt install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev wget tar
 
-      - name: Download OpenWrt 23.05.3 SDK x86_64 (mirror)
+      - name: Download & Extract OpenWrt 23.05.3 SDK x86_64 (Tuna mirror)
         run: |
-          wget https://mirrors.tuna.tsinghua.edu.cn/openwrt/releases/23.05.3/targets/x86/64/openwrt-sdk-23.05.3-x86-64_gcc-12.3.0_musl.Linux-x86_64.tar.xz
+          wget --tries=10 https://mirrors.tuna.tsinghua.edu.cn/openwrt/releases/23.05.3/targets/x86/64/openwrt-sdk-23.05.3-x86-64_gcc-12.3.0_musl.Linux-x86_64.tar.xz
           tar -xf openwrt-sdk*.tar.xz
-          mv openwrt-sdk* openwrt-sdk
+          ls -la
+          SDK_DIR=$(ls -d openwrt-sdk-*)
+          mv "$SDK_DIR" openwrt-sdk
 
       - name: Checkout source
         uses: actions/checkout@v4
