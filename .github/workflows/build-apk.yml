@@ -20,54 +20,51 @@ jobs:
         with:
           path: plugin
 
-      - name: 查看源码结构（排查用）
+      - name: 安装官方打包工具
         run: |
-          echo "=== 插件源码目录结构 ==="
-          find plugin -type f | head -60
+          sudo apt update
+          sudo apt install -y ipkg-utils
 
       - name: 创建标准目录结构
         run: |
           rm -rf pkg
           mkdir -p pkg/control
-          mkdir -p pkg/data/usr/lib/lua/luci/controller
-          mkdir -p pkg/data/usr/lib/lua/luci/model/cbi
-          mkdir -p pkg/data/usr/lib/lua/luci/view
-          mkdir -p pkg/data/www/luci-static/resources/view
-          mkdir -p pkg/data/etc/config
-          mkdir -p pkg/data/etc/init.d
+          mkdir -p pkg/usr/lib/lua/luci/controller
+          mkdir -p pkg/usr/lib/lua/luci/model/cbi
+          mkdir -p pkg/usr/lib/lua/luci/view
+          mkdir -p pkg/www/luci-static/resources/view
+          mkdir -p pkg/etc/config
+          mkdir -p pkg/etc/init.d
 
       - name: 复制插件文件到标准路径
         run: |
           # 复制控制器 Lua 文件
-          find plugin -type f -name "*.lua" -path "*controller*" -exec cp -v {} pkg/data/usr/lib/lua/luci/controller/ \;
+          find plugin -type f -name "*.lua" -path "*controller*" -exec cp -f {} pkg/usr/lib/lua/luci/controller/ \;
           
           # 复制 CBI 模型文件
-          find plugin -type f -name "*.lua" -path "*cbi*" -exec cp -v {} pkg/data/usr/lib/lua/luci/model/cbi/ \;
+          find plugin -type f -name "*.lua" -path "*cbi*" -exec cp -f {} pkg/usr/lib/lua/luci/model/cbi/ \;
           
           # 复制视图文件
-          find plugin -type f \( -name "*.htm" -o -name "*.html" \) -exec cp -v {} pkg/data/usr/lib/lua/luci/view/ \;
+          find plugin -type f \( -name "*.htm" -o -name "*.html" \) -exec cp -f {} pkg/usr/lib/lua/luci/view/ \;
           
           # 复制静态资源
           if [ -d "plugin/htdocs" ]; then
-            cp -rv plugin/htdocs/* pkg/data/www/
+            cp -rf plugin/htdocs/* pkg/www/
           fi
           
           # 复制配置文件
-          find plugin -type f -path "*root/etc/config/*" -exec cp -v {} pkg/data/etc/config/ \;
+          find plugin -type f -path "*root/etc/config/*" -exec cp -f {} pkg/etc/config/ \;
           
           # 复制启动脚本
-          find plugin -type f -path "*root/etc/init.d/*" -exec cp -v {} pkg/data/etc/init.d/ \;
+          find plugin -type f -path "*root/etc/init.d/*" -exec cp -f {} pkg/etc/init.d/ \;
 
       - name: 统一修复文件权限
         run: |
-          # 给所有 Lua 脚本和可执行文件加权限
-          find pkg/data -type f -name "*.lua" -exec chmod 755 {} \;
-          find pkg/data/etc/init.d -type f -exec chmod 755 {} \;
+          # 脚本文件赋予执行权限
+          find pkg -type f -name "*.lua" -exec chmod 755 {} \;
+          find pkg/etc/init.d -type f -exec chmod 755 {} \;
           # 统一目录权限
-          find pkg/data -type d -exec chmod 755 {} \;
-          
-          echo "=== 最终数据目录结构 ==="
-          find pkg/data -type f
+          find pkg -type d -exec chmod 755 {} \;
 
       - name: 生成标准 control 控制文件
         run: |
@@ -85,39 +82,18 @@ Description: LuCI App AdGuard Home
 
 CONTROL_EOF
 
-          # 验证控制文件
-          echo "=== control 文件内容 ==="
-          cat pkg/control/control
-
-      - name: 生成 md5 校验文件
-        run: |
-          cd pkg/data
-          find . -type f | sort | xargs md5sum > ../control/md5sums
-          cd ../..
-          echo "=== md5sums ==="
-          cat pkg/control/md5sums
-
       - name: 标准格式打包 APK
         run: |
-          cd pkg
+          # 官方工具打包，输出标准 ipk 格式
+          ipkg-build -o root -g root pkg .
           
-          # 1. 生成版本标识文件（必须第一行是 2.0）
-          echo "2.0" > debian-binary
+          # 重命名为 iStoreOS 兼容的 apk 后缀
+          mv luci-app-adguardhome_1.0.0_x86_64.ipk ${PLUGIN_NAME}_${ARCHIVE_ARCH}.apk
           
-          # 2. 打包控制文件（gzip 压缩）
-          tar -czf control.tar.gz -C control .
-          
-          # 3. 打包数据文件（gzip 压缩）
-          tar -czf data.tar.gz -C data .
-          
-          # 4. 按标准顺序组装成最终 APK 包（tar 格式，非 ar）
-          tar -cf ../${PLUGIN_NAME}_${ARCHIVE_ARCH}.apk debian-binary control.tar.gz data.tar.gz
-          cd ..
-          
-          # 验证包
+          # 验证包结构
           echo "=== 生成的 APK 包 ==="
           ls -lh ${PLUGIN_NAME}_${ARCHIVE_ARCH}.apk
-          echo "=== APK 包内部文件列表 ==="
+          echo "=== 包内部文件列表 ==="
           tar -tf ${PLUGIN_NAME}_${ARCHIVE_ARCH}.apk
 
       - name: 上传 APK 产物
