@@ -20,55 +20,63 @@ jobs:
         with:
           path: plugin
 
-      - name: 安装官方打包工具
+      - name: 查看源码结构
         run: |
-          sudo apt update
-          sudo apt install -y ipkg-utils
+          echo "=== 插件源码完整结构 ==="
+          find plugin -type f | head -80
 
       - name: 创建标准目录结构
         run: |
           rm -rf pkg
           mkdir -p pkg/control
-          mkdir -p pkg/usr/lib/lua/luci/controller
-          mkdir -p pkg/usr/lib/lua/luci/model/cbi
-          mkdir -p pkg/usr/lib/lua/luci/view
-          mkdir -p pkg/www/luci-static/resources/view
-          mkdir -p pkg/etc/config
-          mkdir -p pkg/etc/init.d
+          mkdir -p pkg/data/usr/lib/lua/luci/controller
+          mkdir -p pkg/data/usr/lib/lua/luci/model/cbi
+          mkdir -p pkg/data/usr/lib/lua/luci/view
+          mkdir -p pkg/data/www/luci-static/resources/view
+          mkdir -p pkg/data/etc/config
+          mkdir -p pkg/data/etc/init.d
 
-      - name: 复制插件文件到标准路径
+      - name: 复制插件文件
         run: |
-          # 复制控制器 Lua 文件
-          find plugin -type f -name "*.lua" -path "*controller*" -exec cp -f {} pkg/usr/lib/lua/luci/controller/ \;
-          
-          # 复制 CBI 模型文件
-          find plugin -type f -name "*.lua" -path "*cbi*" -exec cp -f {} pkg/usr/lib/lua/luci/model/cbi/ \;
-          
-          # 复制视图文件
-          find plugin -type f \( -name "*.htm" -o -name "*.html" \) -exec cp -f {} pkg/usr/lib/lua/luci/view/ \;
-          
-          # 复制静态资源
-          if [ -d "plugin/htdocs" ]; then
-            cp -rf plugin/htdocs/* pkg/www/
+          # 适配标准 LuCI 插件结构：根目录下 luasrc/htdocs/root
+          # 复制控制器
+          if [ -d plugin/luasrc/controller ]; then
+            cp -f plugin/luasrc/controller/*.lua pkg/data/usr/lib/lua/luci/controller/
           fi
           
-          # 复制配置文件
-          find plugin -type f -path "*root/etc/config/*" -exec cp -f {} pkg/etc/config/ \;
+          # 复制 CBI 模型
+          if [ -d plugin/luasrc/model/cbi ]; then
+            cp -f plugin/luasrc/model/cbi/*.lua pkg/data/usr/lib/lua/luci/model/cbi/
+          fi
           
-          # 复制启动脚本
-          find plugin -type f -path "*root/etc/init.d/*" -exec cp -f {} pkg/etc/init.d/ \;
+          # 复制视图文件
+          if [ -d plugin/luasrc/view ]; then
+            cp -f plugin/luasrc/view/*.htm pkg/data/usr/lib/lua/luci/view/ 2>/dev/null || true
+            cp -f plugin/luasrc/view/*.html pkg/data/usr/lib/lua/luci/view/ 2>/dev/null || true
+          fi
+          
+          # 复制静态资源
+          if [ -d plugin/htdocs ]; then
+            cp -rf plugin/htdocs/* pkg/data/www/
+          fi
+          
+          # 复制配置和启动脚本
+          if [ -d plugin/root/etc ]; then
+            cp -rf plugin/root/etc/* pkg/data/etc/
+          fi
 
-      - name: 统一修复文件权限
+      - name: 修复文件权限
         run: |
-          # 脚本文件赋予执行权限
-          find pkg -type f -name "*.lua" -exec chmod 755 {} \;
-          find pkg/etc/init.d -type f -exec chmod 755 {} \;
-          # 统一目录权限
-          find pkg -type d -exec chmod 755 {} \;
+          find pkg/data -type f -name "*.lua" -exec chmod 644 {} \;
+          find pkg/data/etc/init.d -type f -exec chmod 755 {} \;
+          find pkg/data -type d -exec chmod 755 {} \;
+          
+          echo "=== 最终数据文件列表 ==="
+          find pkg/data -type f
 
-      - name: 生成标准 control 控制文件
+      - name: 生成 control 控制文件
         run: |
-          cat > pkg/control/control << 'CONTROL_EOF'
+          cat > pkg/control/control << 'EOF'
 Package: luci-app-adguardhome
 Version: 1.0.0
 Architecture: x86_64
@@ -77,23 +85,44 @@ Section: luci
 Priority: optional
 Depends: luci-base
 Description: LuCI App AdGuard Home
- Web management interface for AdGuard Home service.
+ Web management interface for AdGuard Home.
  .
 
-CONTROL_EOF
+EOF
 
-      - name: 标准格式打包 APK
+      - name: 生成 md5 校验文件
         run: |
-          # 官方工具打包，输出标准 ipk 格式
-          ipkg-build -o root -g root pkg .
+          cd pkg/data
+          find . -type f | sort | xargs md5sum > ../control/md5sums
+          cd ../../
+          cat pkg/control/md5sums
+
+      - name: 严格规范打包 APK
+        run: |
+          cd pkg
           
-          # 重命名为 iStoreOS 兼容的 apk 后缀
-          mv luci-app-adguardhome_1.0.0_x86_64.ipk ${PLUGIN_NAME}_${ARCHIVE_ARCH}.apk
+          # 1. 生成版本标识（严格只有 2.0 加一个换行）
+          printf "2.0\n" > debian-binary
           
-          # 验证包结构
-          echo "=== 生成的 APK 包 ==="
+          # 2. 打包 control 部分（gzip 压缩，文件在根路径）
+          cd control
+          tar -czf ../control.tar.gz .
+          cd ..
+          
+          # 3. 打包 data 部分（gzip 压缩，文件在根路径）
+          cd data
+          tar -czf ../data.tar.gz .
+          cd ..
+          
+          # 4. 外层打包（必须用 ustar 旧格式，opkg 只识别这个）
+          tar --format=ustar -cf ../${PLUGIN_NAME}_${ARCHIVE_ARCH}.apk \
+            debian-binary control.tar.gz data.tar.gz
+          cd ..
+          
+          # 验证
+          echo "=== APK 包信息 ==="
           ls -lh ${PLUGIN_NAME}_${ARCHIVE_ARCH}.apk
-          echo "=== 包内部文件列表 ==="
+          echo "=== 包内文件顺序 ==="
           tar -tf ${PLUGIN_NAME}_${ARCHIVE_ARCH}.apk
 
       - name: 上传 APK 产物
