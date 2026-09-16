@@ -28,14 +28,13 @@ jobs:
         run: |
           cp -r src/luci-app-adguardhome openwrt-sdk/package/
           echo "==== package dir files ===="
-          ls -la openwrt-sdk/package/luci-app-adguardhome/
-          # 检查Makefile是否存在
+          ls -la openwrt-sdk/package/luci-app-adguardhome
           if [ ! -f openwrt-sdk/package/luci-app-adguardhome/Makefile ]; then
             echo "ERROR: Missing Makefile !!!"
             exit 1
           fi
 
-      - name: Compile package (non-interactive)
+      - name: Compile package (non - interactive)
         run: |
           cd openwrt-sdk
           export TERM=dumb
@@ -43,8 +42,8 @@ jobs:
           ./scripts/feeds install luci-base
           make defconfig
           make package/luci-app-adguardhome/clean
+          echo "进入编译luci - app - adguardhome步骤"
           make package/luci-app-adguardhome/compile V=s
-          # 查看编译产物
           ls -la bin/packages/x86_64/luci/
           file bin/packages/x86_64/luci/*.apk
 
