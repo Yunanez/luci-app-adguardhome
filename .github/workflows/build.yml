@@ -1,4 +1,4 @@
-name: Build luci-app-adguardhome APK for OpenWrt 25.12
+name: Build luci-app-adguardhome APK
 on:
   workflow_dispatch
 
@@ -9,12 +9,12 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt update
-          sudo apt install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev wget tar zstd
+          sudo apt install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev wget tar zstd file
 
-      - name: Download & Extract OpenWrt 25.12.0 SDK x86_64 (USTC mirror)
+      - name: Download & Extract OpenWrt 25.12.0 SDK x86_64 (Tuna mirror)
         run: |
-          wget --tries=10 https://mirrors.ustc.edu.cn/openwrt/releases/25.12.0/targets/x86/64/openwrt-sdk-25.12.0-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst
-          tar -I zstd -xf openwrt-sdk*.tar.zst
+          wget --tries=10 https://mirrors.tuna.tsinghua.edu.cn/openwrt/releases/25.12.0/targets/x86/64/openwrt-sdk-25.12.0-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst
+          tar --zstd -xf openwrt-sdk*.tar.zst
           ls -la
           SDK_DIR=$(find . -maxdepth 1 -type d -name "openwrt-sdk-*")
           mv "$SDK_DIR" openwrt-sdk
@@ -29,26 +29,27 @@ jobs:
           cp -r src/luci-app-adguardhome openwrt-sdk/package/
           echo "==== package dir files ===="
           ls -la openwrt-sdk/package/luci-app-adguardhome/
+          # 检查Makefile是否存在
+          if [ ! -f openwrt-sdk/package/luci-app-adguardhome/Makefile ]; then
+            echo "ERROR: Missing Makefile !!!"
+            exit 1
+          fi
 
-      - name: Build package
+      - name: Compile package (non-interactive)
         run: |
           cd openwrt-sdk
           export TERM=dumb
           ./scripts/feeds update -a
-          ./scripts/feeds install luci-compat
+          ./scripts/feeds install luci-base
           make defconfig
-          echo "==== try to clean ===="
           make package/luci-app-adguardhome/clean
-          echo "==== try compile ===="
-          make -j1 V=sc package/luci-app-adguardhome/compile
-          echo "==== try install ===="
-          make -j1 V=sc package/luci-app-adguardhome/install
-          echo "==== try package ===="
-          make -j1 V=sc package/luci-app-adguardhome/package
+          make package/luci-app-adguardhome/compile V=s
+          # 查看编译产物
           ls -la bin/packages/x86_64/luci/
+          file bin/packages/x86_64/luci/*.apk
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: luci-app-adguardhome-apk
-          path: openwrt-sdk/bin/packages/x86_64/luci/luci-app-adguardhome*.apk
+          path: openwrt-sdk/bin/packages/x86_64/luci/*.apk
