@@ -3,12 +3,11 @@ name: 编译 iStoreOS 25.12 APK 插件
 on:
   push:
     branches: [ main ]
-  workflow_dispatch: # 允许手动触发编译
+  workflow_dispatch:
 
 env:
   PLUGIN_NAME: luci-app-adguardhome
   IStoreOS_BRANCH: istoreos-25.12
-  # 目标架构：x86_64 对应 x86 软路由；aarch64 对应 ARM 机型（R2S/R4S/R5S等）
   TARGET_ARCH: x86_64
 
 jobs:
@@ -31,7 +30,6 @@ jobs:
       - name: 拉取 iStoreOS 25.12 源码
         run: |
           git clone https://github.com/istoreos/istoreos.git -b $IStoreOS_BRANCH openwrt
-          cd openwrt
 
       - name: 更新并安装 feeds
         run: |
@@ -39,9 +37,12 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: 复制插件到源码目录
+      - name: 复制插件到自定义目录（修复冲突）
         run: |
-          cp -r plugin/$PLUGIN_NAME openwrt/package/feeds/luci/
+          # 创建自定义插件目录，避免和官方feeds冲突
+          mkdir -p openwrt/package/custom
+          # 复制插件源码进去
+          cp -r plugin/$PLUGIN_NAME openwrt/package/custom/
 
       - name: 配置编译选项
         run: |
@@ -52,8 +53,8 @@ jobs:
       - name: 编译插件
         run: |
           cd openwrt
-          make package/feeds/luci/$PLUGIN_NAME/clean
-          make package/feeds/luci/$PLUGIN_NAME/compile -j$(nproc)
+          make package/custom/$PLUGIN_NAME/clean
+          make package/custom/$PLUGIN_NAME/compile -j$(nproc)
 
       - name: 收集 APK 产物
         run: |
