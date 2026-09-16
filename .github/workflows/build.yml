@@ -1,54 +1,64 @@
-name: Build luci-app-adguardhome APK
+name: Build OpenWrt Package
+
 on:
-  workflow_dispatch
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - x86_64
+          - aarch64_generic
+          - arm_cortex-a7_neon-vfpv4
+
     steps:
-      - name: Install dependencies
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup build env
         run: |
           sudo apt update
-          sudo apt install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev wget tar zstd file
+          sudo apt install -y build-essential libncurses-dev gawk flex bison \
+          git subversion python3 python3-pip unzip libssl-dev
 
-      - name: Download & Extract OpenWrt 25.12.0 SDK x86_64 (Tuna mirror)
+      - name: Clone OpenWrt source
         run: |
-          wget --tries=10 https://mirrors.tuna.tsinghua.edu.cn/openwrt/releases/25.12.0/targets/x86/64/openwrt-sdk-25.12.0-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst
-          tar --zstd -xf openwrt-sdk*.tar.zst
-          ls -la
-          SDK_DIR=$(find . -maxdepth 1 -type d -name "openwrt-sdk-*")
-          mv "$SDK_DIR" openwrt-sdk
+          git clone https://github.com/openwrt/openwrt.git openwrt
+          cd openwrt
+          git pull
 
-      - name: Checkout source
-        uses: actions/checkout@v4
-        with:
-          path: src
-
-      - name: Copy plugin into SDK package & list files
+      - name: Add package feeds
         run: |
-          cp -r src/luci-app-adguardhome openwrt-sdk/package/
-          echo "==== package dir files ===="
-          ls -la openwrt-sdk/package/luci-app-adguardhome
-          if [ ! -f openwrt-sdk/package/luci-app-adguardhome/Makefile ]; then
-            echo "ERROR: Missing Makefile !!!"
-            exit 1
-          fi
-
-      - name: Compile package (non - interactive)
-        run: |
-          cd openwrt-sdk
-          export TERM=dumb
+          cd openwrt
+          echo "src-git luci https://github.com/openwrt/luci.git" >> feeds.conf.default
           ./scripts/feeds update -a
-          ./scripts/feeds install luci-base
-          make defconfig
-          make package/luci-app-adguardhome/clean
-          echo "进入编译luci - app - adguardhome步骤"
-          make package/luci-app-adguardhome/compile V=s
-          ls -la bin/packages/x86_64/luci/
-          file bin/packages/x86_64/luci/*.apk
+          ./scripts/feeds install -a
 
-      - name: Upload artifact
+      - name: Copy luci-app-adguardhome
+        run: |
+          cp -r $GITHUB_WORKSPACE openwrt/package/luci-app-adguardhome
+
+      - name: Generate .config
+        run: |
+          cd openwrt
+          make defconfig
+          echo "CONFIG_PACKAGE_luci-app-adguardhome=y" >> .config
+          make menuconfig -n
+
+      - name: Compile package
+        run: |
+          cd openwrt
+          make package/luci-app-adguardhome/compile -j$(nproc)
+
+      - name: Upload ipk artifact
         uses: actions/upload-artifact@v4
         with:
-          name: luci-app-adguardhome-apk
-          path: openwrt-sdk/bin/packages/x86_64/luci/*.apk
+          name: ipk-${{ matrix.target }}
+          path: openwrt/bin/packages/*/luci-app-adguardhome*.ipk
