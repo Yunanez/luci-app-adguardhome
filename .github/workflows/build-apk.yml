@@ -28,7 +28,8 @@ jobs:
       - name: 创建标准打包目录
         run: |
           rm -rf pkg
-          mkdir -p pkg/control
+          # 控制目录必须大写 CONTROL（ipkg-build 强制要求）
+          mkdir -p pkg/CONTROL
           mkdir -p pkg/usr/lib/lua/luci
           mkdir -p pkg/usr/lib/lua/luci/i18n
 
@@ -39,7 +40,7 @@ jobs:
           # 复制 LuCI 程序文件（保留完整目录层级）
           cp -rf "$SRC_DIR/luasrc"/* pkg/usr/lib/lua/luci/
           
-          # 复制系统文件（root 目录直接映射）
+          # 复制系统文件（root 目录直接映射到包根目录）
           cp -rf "$SRC_DIR/root"/* pkg/
           
           # 复制中文语言文件
@@ -59,11 +60,11 @@ jobs:
 
       - name: 生成标准 control 控制文件
         run: |
-          printf "Package: luci-app-adguardhome\nVersion: 1.0.0\nArchitecture: x86_64\nMaintainer: Custom Build\nSection: luci\nPriority: optional\nDepends: luci-base\nDescription: LuCI App AdGuard Home\n AdGuard Home 管理界面，支持核心更新、日志查看、DNS 重定向。\n .\n" > pkg/control/control
+          printf "Package: luci-app-adguardhome\nVersion: 1.0.0\nArchitecture: x86_64\nMaintainer: Custom Build\nSection: luci\nPriority: optional\nDepends: luci-base\nDescription: LuCI App AdGuard Home\n AdGuard Home 管理界面，支持核心更新、日志查看、DNS 重定向。\n .\n" > pkg/CONTROL/control
 
       - name: 官方工具打包
         run: |
-          # 官方工具打包（默认 root 所有者，无需额外参数）
+          # 官方工具打包（自动生成 md5 校验、处理文件所有者）
           ./ipkg-build pkg .
           
           # 重命名为 iStoreOS 兼容的 apk 后缀
