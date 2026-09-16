@@ -1,0 +1,36 @@
+name: Build luci-app-adguardhome IPK
+on:
+  workflow_dispatch: # 手动触发，网页点按钮运行
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install build dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev wget tar
+
+      - name: Download OpenWrt 23.05.3 SDK x86_64
+        run: |
+          wget https://downloads.openwrt.org/releases/23.05.3/targets/x86/64/openwrt-sdk-23.05.3-x86-64_gcc-12.3.0_musl.Linux-x86_64.tar.xz
+          tar -xf openwrt-sdk*.tar.xz
+          mv openwrt-sdk* openwrt-sdk
+
+      - name: Checkout plugin source code
+        uses: actions/checkout@v4
+        with:
+          path: openwrt-sdk/package/luci-app-adguardhome
+
+      - name: Compile package
+        run: |
+          cd openwrt-sdk
+          ./scripts/feeds update -a
+          ./scripts/feeds install luci-compat
+          make package/luci-app-adguardhome/compile V=s
+
+      - name: Upload compiled IPK
+        uses: actions/upload-artifact@v4
+        with:
+          name: luci-app-adguardhome-ipk
+          path: openwrt-sdk/bin/packages/x86_64/luci/*.ipk
