@@ -12,20 +12,21 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04  # 改用官方推荐的22.04，解决工具链兼容问题
     steps:
       - name: 检出当前插件源码
         uses: actions/checkout@v4
         with:
           path: plugin
 
-      - name: 安装完整编译依赖（补全flex/bison）
+      - name: 安装全套编译依赖
         run: |
           sudo apt update
           sudo apt install -y build-essential ccache ecj fastjar file g++ gawk \
           gettext git java-propose-classpath libelf-dev libncurses-dev \
-          libssl-dev libtool python3 python3-setuptools rsync subversion \
-          swig unzip wget xsltproc zlib1g-dev flex bison autoconf automake pkg-config
+          libssl-dev libtool python3 python3-setuptools python3-pyelftools \
+          rsync subversion swig unzip wget xsltproc zlib1g-dev flex bison \
+          autoconf automake pkg-config gperf
 
       - name: 拉取 iStoreOS 25.12 源码
         run: |
@@ -42,19 +43,17 @@ jobs:
           mkdir -p openwrt/package/custom
           cp -r plugin/$PLUGIN_NAME openwrt/package/custom/
 
-      - name: 生成配置并启用插件
+      - name: 生成官方标准配置并启用插件
         run: |
           cd openwrt
-          # 1. 生成默认基础配置（自动编译配置工具conf）
-          make defconfig
-          # 2. 显式指定目标架构为x86_64通用设备
-          ./scripts/config --set CONFIG_TARGET_x86 y
-          ./scripts/config --set CONFIG_TARGET_x86_64 y
-          ./scripts/config --set CONFIG_TARGET_x86_64_DEVICE_generic y
-          # 3. 启用当前插件为模块编译
+          # 1. 直接加载官方x86_64架构默认配置，最规范稳定
+          cp target/linux/x86/64/defconfig .config
+          # 2. 补全完整配置并编译配置工具
+          make defconfig V=s
+          # 3. 启用自定义插件为模块编译
           ./scripts/config --set CONFIG_PACKAGE_$PLUGIN_NAME m
-          # 4. 重新生成完整配置，自动补全所有依赖项
-          make defconfig
+          # 4. 重新校验补全所有依赖
+          make defconfig V=s
 
       - name: 编译插件（输出详细日志）
         run: |
