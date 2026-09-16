@@ -1,4 +1,4 @@
-name: 编译 iStoreOS 25.12 APK 插件
+name: 打包 iStoreOS 25.12 APK 插件
 
 on:
   push:
@@ -7,74 +7,82 @@ on:
 
 env:
   PLUGIN_NAME: luci-app-adguardhome
-  IStoreOS_BRANCH: istoreos-25.12
+  PLUGIN_VERSION: 1.0.0
+  TARGET_ARCH: x86_64
   ARCHIVE_ARCH: x86_64
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     steps:
-      - name: 检出当前插件源码
+      - name: 检出插件源码
         uses: actions/checkout@v4
         with:
           path: plugin
 
-      - name: 安装全套编译依赖
+      - name: 准备打包目录结构
         run: |
-          sudo apt update
-          sudo apt install -y build-essential ccache ecj fastjar file g++ gawk \
-          gettext git java-propose-classpath libelf-dev libncurses-dev \
-          libssl-dev libtool python3 python3-setuptools python3-pyelftools \
-          rsync subversion swig unzip wget xsltproc zlib1g-dev flex bison \
-          autoconf automake pkg-config gperf
+          mkdir -p pkg/control
+          mkdir -p pkg/data/usr/lib/lua/luci
+          mkdir -p pkg/data/www/luci-static/resources/view
+          mkdir -p pkg/data/etc/config
 
-      - name: 拉取 iStoreOS 25.12 源码
+      - name: 复制插件文件到对应路径
         run: |
-          git clone https://github.com/istoreos/istoreos.git -b $IStoreOS_BRANCH openwrt
-
-      - name: 更新并安装 feeds
-        run: |
-          cd openwrt
-          ./scripts/feeds update -a
-          ./scripts/feeds install -a
-
-      - name: 用自定义源码替换官方同名包
-        run: |
-          cd openwrt
-          MAKEFILE_PATH=$(find ../plugin -name Makefile | head -n 1)
-          PLUGIN_SRC=$(dirname "$MAKEFILE_PATH")
-          rm -rf package/feeds/luci/$PLUGIN_NAME
-          cp -rf "$PLUGIN_SRC" package/feeds/luci/$PLUGIN_NAME
-          ls -la package/feeds/luci/$PLUGIN_NAME/Makefile
-
-      - name: 生成配置并启用插件
-        run: |
-          cd openwrt
-          unset TARGET_ARCH ARCH CFLAGS CXXFLAGS LDFLAGS
+          # 复制 Lua 程序文件
+          if [ -d plugin/luasrc ]; then
+            cp -rf plugin/luasrc/* pkg/data/usr/lib/lua/luci/
+          fi
           
-          cat > .config << EOF
-          CONFIG_TARGET_x86=y
-          CONFIG_TARGET_x86_64=y
-          CONFIG_TARGET_x86_64_DEVICE_generic=y
+          # 复制网页静态资源
+          if [ -d plugin/htdocs ]; then
+            cp -rf plugin/htdocs/* pkg/data/www/
+          fi
+          
+          # 复制配置与启动文件
+          if [ -d plugin/root/etc ]; then
+            cp -rf plugin/root/etc/* pkg/data/etc/
+          fi
+
+      - name: 生成控制文件 control
+        run: |
+          cat > pkg/control/control << EOF
+          Package: $PLUGIN_NAME
+          Version: $PLUGIN_VERSION
+          Architecture: $TARGET_ARCH
+          Maintainer: Custom Build
+          Section: luci
+          Priority: optional
+          Depends: adguardhome, luci-base
+          Description: Luci App AdGuard Home
+           AdGuard Home 管理界面插件
           EOF
+
+      - name: 打包成 APK 安装包
+        run: |
+          cd pkg
           
-          make defconfig V=s
-          echo "CONFIG_PACKAGE_$PLUGIN_NAME=m" >> .config
-          make defconfig V=s
+          # 打包数据文件
+          tar -czf data.tar.gz -C data .
+          
+          # 打包控制文件
+          tar -czf control.tar.gz -C control .
+          
+          # 写入格式版本标识
+          echo -n "2.0" > debian-binary
+          
+          # 组装成最终 APK 包
+          tar -cf ../${PLUGIN_NAME}_${ARCHIVE_ARCH}.apk debian-binary control.tar.gz data.tar.gz
+          cd ..
+          
+          # 验证包
+          ls -lh ${PLUGIN_NAME}_${ARCHIVE_ARCH}.apk
 
-      - name: 编译主机端工具链（修复 libdeflate-gzip 缺失）
-        run: |
-          cd openwrt
-          unset TARGET_ARCH ARCH CFLAGS CXXFLAGS LDFLAGS
-          make tools/compile -j$(nproc) V=s
-
-      - name: 编译插件
-        run: |
-          cd openwrt
-          unset TARGET_ARCH ARCH CFLAGS CXXFLAGS LDFLAGS
-          make package/feeds/luci/$PLUGIN_NAME/clean -j1 V=sc
-          make package/feeds/luci/$PLUGIN_NAME/compile -j1 V=sc
-
+      - name: 上传 APK 产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PLUGIN_NAME }}_${{ env.ARCHIVE_ARCH }}_APK
+          path: ${{ env.PLUGIN_NAME }}_${{ env.ARCHIVE_ARCH }}.apk
       - name: 收集 APK 产物
         run: |
           mkdir -p output
