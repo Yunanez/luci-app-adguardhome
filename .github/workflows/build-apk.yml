@@ -41,17 +41,10 @@ jobs:
       - name: 用自定义源码替换官方同名包
         run: |
           cd openwrt
-          # 查找 Makefile 定位插件根目录
           MAKEFILE_PATH=$(find ../plugin -name Makefile | head -n 1)
           PLUGIN_SRC=$(dirname "$MAKEFILE_PATH")
-          
-          # 删除官方 feeds 里的同名包
           rm -rf package/feeds/luci/$PLUGIN_NAME
-          
-          # 复制自定义源码到官方路径
           cp -rf "$PLUGIN_SRC" package/feeds/luci/$PLUGIN_NAME
-          
-          # 验证
           ls -la package/feeds/luci/$PLUGIN_NAME/Makefile
 
       - name: 生成配置并启用插件
@@ -69,7 +62,13 @@ jobs:
           echo "CONFIG_PACKAGE_$PLUGIN_NAME=m" >> .config
           make defconfig V=s
 
-      - name: 编译插件（单线程详细日志）
+      - name: 编译主机端工具链（修复 libdeflate-gzip 缺失）
+        run: |
+          cd openwrt
+          unset TARGET_ARCH ARCH CFLAGS CXXFLAGS LDFLAGS
+          make tools/compile -j$(nproc) V=s
+
+      - name: 编译插件
         run: |
           cd openwrt
           unset TARGET_ARCH ARCH CFLAGS CXXFLAGS LDFLAGS
