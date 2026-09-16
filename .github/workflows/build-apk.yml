@@ -20,7 +20,12 @@ jobs:
         with:
           path: plugin
 
-      - name: 准备标准目录结构
+      - name: 查看源码结构（排查用）
+        run: |
+          echo "=== 插件源码目录结构 ==="
+          find plugin -type f | head -60
+
+      - name: 创建标准目录结构
         run: |
           rm -rf pkg
           mkdir -p pkg/control
@@ -31,42 +36,42 @@ jobs:
           mkdir -p pkg/data/etc/config
           mkdir -p pkg/data/etc/init.d
 
-      - name: 自动匹配并复制插件文件
+      - name: 复制插件文件到标准路径
         run: |
-          # 自动查找并复制控制器文件
-          find plugin -name "*.lua" -path "*/controller/*" -exec cp -f {} pkg/data/usr/lib/lua/luci/controller/ \;
+          # 复制控制器 Lua 文件
+          find plugin -type f -name "*.lua" -path "*controller*" -exec cp -v {} pkg/data/usr/lib/lua/luci/controller/ \;
           
-          # 自动查找并复制 CBI 模型文件
-          find plugin -name "*.lua" -path "*/model/cbi/*" -exec cp -f {} pkg/data/usr/lib/lua/luci/model/cbi/ \;
+          # 复制 CBI 模型文件
+          find plugin -type f -name "*.lua" -path "*cbi*" -exec cp -v {} pkg/data/usr/lib/lua/luci/model/cbi/ \;
           
-          # 自动查找并复制视图文件
-          find plugin -name "*.htm" -o -name "*.html" | while read f; do
-            cp -f "$f" pkg/data/usr/lib/lua/luci/view/
-          done
+          # 复制视图文件
+          find plugin -type f \( -name "*.htm" -o -name "*.html" \) -exec cp -v {} pkg/data/usr/lib/lua/luci/view/ \;
           
-          # 自动查找并复制静态资源
-          if [ -d plugin/htdocs ]; then
-            cp -rf plugin/htdocs/* pkg/data/www/
+          # 复制静态资源
+          if [ -d "plugin/htdocs" ]; then
+            cp -rv plugin/htdocs/* pkg/data/www/
           fi
           
-          # 自动查找并复制配置文件
-          find plugin -path "*/root/etc/config/*" -exec cp -f {} pkg/data/etc/config/ \;
+          # 复制配置文件
+          find plugin -type f -path "*root/etc/config/*" -exec cp -v {} pkg/data/etc/config/ \;
           
-          # 自动查找并复制启动脚本
-          find plugin -path "*/root/etc/init.d/*" -exec cp -f {} pkg/data/etc/init.d/ \;
+          # 复制启动脚本
+          find plugin -type f -path "*root/etc/init.d/*" -exec cp -v {} pkg/data/etc/init.d/ \;
 
-      - name: 修复所有文件权限
+      - name: 统一修复文件权限
         run: |
-          # 给所有 Lua 脚本加执行权限
-          find pkg/data -name "*.lua" -exec chmod 755 {} \;
-          # 给启动脚本加执行权限
+          # 给所有 Lua 脚本和可执行文件加权限
+          find pkg/data -type f -name "*.lua" -exec chmod 755 {} \;
           find pkg/data/etc/init.d -type f -exec chmod 755 {} \;
           # 统一目录权限
           find pkg/data -type d -exec chmod 755 {} \;
+          
+          echo "=== 最终数据目录结构 ==="
+          find pkg/data -type f
 
       - name: 生成标准 control 控制文件
         run: |
-          cat > pkg/control/control << 'EOF'
+          cat > pkg/control/control << 'CONTROL_EOF'
 Package: luci-app-adguardhome
 Version: 1.0.0
 Architecture: x86_64
@@ -75,38 +80,45 @@ Section: luci
 Priority: optional
 Depends: luci-base
 Description: LuCI App AdGuard Home
- AdGuard Home web management interface for LuCI.
+ Web management interface for AdGuard Home service.
  .
 
-EOF
-          # 确保文件末尾有空行（格式强制要求）
-          echo "" >> pkg/control/control
+CONTROL_EOF
+
+          # 验证控制文件
+          echo "=== control 文件内容 ==="
+          cat pkg/control/control
 
       - name: 生成 md5 校验文件
         run: |
           cd pkg/data
-          find . -type f -exec md5sum {} \; > ../control/md5sums
+          find . -type f | sort | xargs md5sum > ../control/md5sums
           cd ../..
+          echo "=== md5sums ==="
+          cat pkg/control/md5sums
 
-      - name: 规范打包 APK（严格遵循 IPK 格式）
+      - name: 标准格式打包 APK
         run: |
           cd pkg
           
-          # 1. 写入格式版本号（必须是第一行）
-          echo -e "2.0\n" > debian-binary
+          # 1. 生成版本标识文件（必须第一行是 2.0）
+          echo "2.0" > debian-binary
           
-          # 2. 打包控制文件（必须用 gzip 压缩）
+          # 2. 打包控制文件（gzip 压缩）
           tar -czf control.tar.gz -C control .
           
-          # 3. 打包数据文件（必须用 gzip 压缩）
+          # 3. 打包数据文件（gzip 压缩）
           tar -czf data.tar.gz -C data .
           
-          # 4. 按顺序组装成 APK 包（顺序不能变）
-          ar -rc ../${PLUGIN_NAME}_${ARCHIVE_ARCH}.apk debian-binary control.tar.gz data.tar.gz
+          # 4. 按标准顺序组装成最终 APK 包（tar 格式，非 ar）
+          tar -cf ../${PLUGIN_NAME}_${ARCHIVE_ARCH}.apk debian-binary control.tar.gz data.tar.gz
           cd ..
           
-          # 验证包大小
+          # 验证包
+          echo "=== 生成的 APK 包 ==="
           ls -lh ${PLUGIN_NAME}_${ARCHIVE_ARCH}.apk
+          echo "=== APK 包内部文件列表 ==="
+          tar -tf ${PLUGIN_NAME}_${ARCHIVE_ARCH}.apk
 
       - name: 上传 APK 产物
         uses: actions/upload-artifact@v4
