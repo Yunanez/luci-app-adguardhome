@@ -8,6 +8,7 @@ on:
 env:
   PLUGIN_NAME: luci-app-adguardhome
   IStoreOS_BRANCH: istoreos-25.12
+  # 目标架构：x86_64 对应 x86 软路由；aarch64 对应 ARM 机型（R2S/R4S/R5S等）
   TARGET_ARCH: x86_64
 
 jobs:
@@ -19,11 +20,11 @@ jobs:
         with:
           path: plugin
 
-      - name: 安装编译依赖
+      - name: 安装完整编译依赖
         run: |
           sudo apt update
           sudo apt install -y build-essential ccache ecj fastjar file g++ gawk \
-          gettext git java-propose-classpath libelf-dev libncurses5-dev \
+          gettext git java-propose-classpath libelf-dev libncurses-dev \
           libssl-dev libtool python3 python3-setuptools rsync subversion \
           swig unzip wget xsltproc zlib1g-dev
 
@@ -37,24 +38,36 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: 复制插件到自定义目录（修复冲突）
+      - name: 复制插件到自定义目录（避免官方包冲突）
         run: |
-          # 创建自定义插件目录，避免和官方feeds冲突
           mkdir -p openwrt/package/custom
-          # 复制插件源码进去
           cp -r plugin/$PLUGIN_NAME openwrt/package/custom/
 
-      - name: 配置编译选项
+      - name: 生成基础架构配置
         run: |
           cd openwrt
-          echo "CONFIG_PACKAGE_$PLUGIN_NAME=m" >> .config
+          # 写入 x86_64 目标架构基础配置
+          cat > .config << EOF
+          CONFIG_TARGET_x86=y
+          CONFIG_TARGET_x86_64=y
+          CONFIG_TARGET_x86_64_DEVICE_generic=y
+          EOF
+          # 生成完整默认配置
+          make defconfig
+
+      - name: 启用插件编译
+        run: |
+          cd openwrt
+          # 用官方配置工具启用插件为模块编译
+          ./scripts/config --set CONFIG_PACKAGE_$PLUGIN_NAME m
+          # 重新校验配置
           make defconfig
 
       - name: 编译插件
         run: |
           cd openwrt
           make package/custom/$PLUGIN_NAME/clean
-          make package/custom/$PLUGIN_NAME/compile -j$(nproc)
+          make package/custom/$PLUGIN_NAME/compile -j$(nproc) V=s
 
       - name: 收集 APK 产物
         run: |
