@@ -38,64 +38,43 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: 部署插件并校验结构
+      - name: 用自定义源码替换官方同名包
         run: |
           cd openwrt
-          mkdir -p package/custom
-
-          # 查看检出的源码完整结构
-          echo "=== 检出的插件源码完整结构 ==="
-          find ../plugin -type f | head -50
-
-          # 查找 Makefile 位置
+          # 查找 Makefile 定位插件根目录
           MAKEFILE_PATH=$(find ../plugin -name Makefile | head -n 1)
-          if [ -z "$MAKEFILE_PATH" ]; then
-            echo "❌ 未找到 Makefile 文件"
-            exit 1
-          fi
-          echo "✅ 找到 Makefile: $MAKEFILE_PATH"
-
-          # 提取插件根目录
           PLUGIN_SRC=$(dirname "$MAKEFILE_PATH")
-          echo "✅ 插件根目录: $PLUGIN_SRC"
-
-          # 清理旧目录并复制
-          rm -rf package/custom/$PLUGIN_NAME
-          cp -rf "$PLUGIN_SRC" package/custom/$PLUGIN_NAME
-
-          # 校验目标目录和 Makefile
-          echo "=== 目标目录文件列表 ==="
-          ls -la package/custom/$PLUGIN_NAME/
-          echo "=== Makefile 前 20 行 ==="
-          head -20 package/custom/$PLUGIN_NAME/Makefile
+          
+          # 删除官方 feeds 里的同名包
+          rm -rf package/feeds/luci/$PLUGIN_NAME
+          
+          # 复制自定义源码到官方路径
+          cp -rf "$PLUGIN_SRC" package/feeds/luci/$PLUGIN_NAME
+          
+          # 验证
+          ls -la package/feeds/luci/$PLUGIN_NAME/Makefile
 
       - name: 生成配置并启用插件
         run: |
           cd openwrt
           unset TARGET_ARCH ARCH CFLAGS CXXFLAGS LDFLAGS
-
+          
           cat > .config << EOF
           CONFIG_TARGET_x86=y
           CONFIG_TARGET_x86_64=y
           CONFIG_TARGET_x86_64_DEVICE_generic=y
           EOF
-
+          
           make defconfig V=s
-
-          # 追加插件启用配置
           echo "CONFIG_PACKAGE_$PLUGIN_NAME=m" >> .config
           make defconfig V=s
-
-          # 校验配置是否生效
-          echo "=== 配置项校验 ==="
-          grep -i "adguardhome" .config || echo "❌ 配置中未找到 adguardhome 相关项"
 
       - name: 编译插件（单线程详细日志）
         run: |
           cd openwrt
           unset TARGET_ARCH ARCH CFLAGS CXXFLAGS LDFLAGS
-          make package/custom/$PLUGIN_NAME/clean -j1 V=sc
-          make package/custom/$PLUGIN_NAME/compile -j1 V=sc
+          make package/feeds/luci/$PLUGIN_NAME/clean -j1 V=sc
+          make package/feeds/luci/$PLUGIN_NAME/compile -j1 V=sc
 
       - name: 收集 APK 产物
         run: |
