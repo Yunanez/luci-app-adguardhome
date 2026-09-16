@@ -20,12 +20,10 @@ jobs:
         with:
           path: repo
 
-      - name: 下载官方 ipkg-build 打包工具（GitHub 稳定源）
+      - name: 下载官方 ipkg-build 打包工具
         run: |
           wget -O ipkg-build https://raw.githubusercontent.com/openwrt/openwrt/main/scripts/ipkg-build
           chmod 755 ipkg-build
-          # 验证工具是否下载成功
-          head -5 ipkg-build
 
       - name: 创建标准打包目录
         run: |
@@ -65,8 +63,8 @@ jobs:
 
       - name: 官方工具打包
         run: |
-          # 使用官方 ipkg-build 打包，指定所有者为 root
-          ./ipkg-build -o root -g root pkg .
+          # 官方工具打包（默认 root 所有者，无需额外参数）
+          ./ipkg-build pkg .
           
           # 重命名为 iStoreOS 兼容的 apk 后缀
           mv luci-app-adguardhome_1.0.0_x86_64.ipk ${PLUGIN_NAME}_${ARCHIVE_ARCH}.apk
