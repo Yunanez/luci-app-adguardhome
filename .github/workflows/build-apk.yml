@@ -20,62 +20,92 @@ jobs:
         with:
           path: plugin
 
-      - name: 准备打包目录结构
+      - name: 准备标准目录结构
         run: |
+          rm -rf pkg
           mkdir -p pkg/control
-          mkdir -p pkg/data/usr/lib/lua/luci
+          mkdir -p pkg/data/usr/lib/lua/luci/controller
+          mkdir -p pkg/data/usr/lib/lua/luci/model/cbi
+          mkdir -p pkg/data/usr/lib/lua/luci/view
           mkdir -p pkg/data/www/luci-static/resources/view
           mkdir -p pkg/data/etc/config
+          mkdir -p pkg/data/etc/init.d
 
-      - name: 复制插件文件到对应路径
+      - name: 自动匹配并复制插件文件
         run: |
-          # 复制 Lua 程序文件
-          if [ -d plugin/luasrc ]; then
-            cp -rf plugin/luasrc/* pkg/data/usr/lib/lua/luci/
-          fi
+          # 自动查找并复制控制器文件
+          find plugin -name "*.lua" -path "*/controller/*" -exec cp -f {} pkg/data/usr/lib/lua/luci/controller/ \;
           
-          # 复制网页静态资源
+          # 自动查找并复制 CBI 模型文件
+          find plugin -name "*.lua" -path "*/model/cbi/*" -exec cp -f {} pkg/data/usr/lib/lua/luci/model/cbi/ \;
+          
+          # 自动查找并复制视图文件
+          find plugin -name "*.htm" -o -name "*.html" | while read f; do
+            cp -f "$f" pkg/data/usr/lib/lua/luci/view/
+          done
+          
+          # 自动查找并复制静态资源
           if [ -d plugin/htdocs ]; then
             cp -rf plugin/htdocs/* pkg/data/www/
           fi
           
-          # 复制配置与启动文件
-          if [ -d plugin/root/etc ]; then
-            cp -rf plugin/root/etc/* pkg/data/etc/
-          fi
+          # 自动查找并复制配置文件
+          find plugin -path "*/root/etc/config/*" -exec cp -f {} pkg/data/etc/config/ \;
+          
+          # 自动查找并复制启动脚本
+          find plugin -path "*/root/etc/init.d/*" -exec cp -f {} pkg/data/etc/init.d/ \;
 
-      - name: 生成控制文件 control
+      - name: 修复所有文件权限
         run: |
-          cat > pkg/control/control << EOF
-          Package: $PLUGIN_NAME
-          Version: $PLUGIN_VERSION
-          Architecture: $TARGET_ARCH
-          Maintainer: Custom Build
-          Section: luci
-          Priority: optional
-          Depends: adguardhome, luci-base
-          Description: Luci App AdGuard Home
-           AdGuard Home 管理界面插件
-          EOF
+          # 给所有 Lua 脚本加执行权限
+          find pkg/data -name "*.lua" -exec chmod 755 {} \;
+          # 给启动脚本加执行权限
+          find pkg/data/etc/init.d -type f -exec chmod 755 {} \;
+          # 统一目录权限
+          find pkg/data -type d -exec chmod 755 {} \;
 
-      - name: 打包成 APK 安装包
+      - name: 生成标准 control 控制文件
+        run: |
+          cat > pkg/control/control << 'EOF'
+Package: luci-app-adguardhome
+Version: 1.0.0
+Architecture: x86_64
+Maintainer: Custom Build
+Section: luci
+Priority: optional
+Depends: luci-base
+Description: LuCI App AdGuard Home
+ AdGuard Home web management interface for LuCI.
+ .
+
+EOF
+          # 确保文件末尾有空行（格式强制要求）
+          echo "" >> pkg/control/control
+
+      - name: 生成 md5 校验文件
+        run: |
+          cd pkg/data
+          find . -type f -exec md5sum {} \; > ../control/md5sums
+          cd ../..
+
+      - name: 规范打包 APK（严格遵循 IPK 格式）
         run: |
           cd pkg
           
-          # 打包数据文件
-          tar -czf data.tar.gz -C data .
+          # 1. 写入格式版本号（必须是第一行）
+          echo -e "2.0\n" > debian-binary
           
-          # 打包控制文件
+          # 2. 打包控制文件（必须用 gzip 压缩）
           tar -czf control.tar.gz -C control .
           
-          # 写入格式版本标识
-          echo -n "2.0" > debian-binary
+          # 3. 打包数据文件（必须用 gzip 压缩）
+          tar -czf data.tar.gz -C data .
           
-          # 组装成最终 APK 包
-          tar -cf ../${PLUGIN_NAME}_${ARCHIVE_ARCH}.apk debian-binary control.tar.gz data.tar.gz
+          # 4. 按顺序组装成 APK 包（顺序不能变）
+          ar -rc ../${PLUGIN_NAME}_${ARCHIVE_ARCH}.apk debian-binary control.tar.gz data.tar.gz
           cd ..
           
-          # 验证包
+          # 验证包大小
           ls -lh ${PLUGIN_NAME}_${ARCHIVE_ARCH}.apk
 
       - name: 上传 APK 产物
