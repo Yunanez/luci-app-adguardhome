@@ -8,7 +8,8 @@ on:
 env:
   PLUGIN_NAME: luci-app-adguardhome
   IStoreOS_BRANCH: istoreos-25.12
-  TARGET_ARCH: x86_64
+  # 仅用于产物命名，不参与构建逻辑，避免与系统内部变量冲突
+  ARCHIVE_ARCH: x86_64
 
 jobs:
   build:
@@ -46,22 +47,29 @@ jobs:
       - name: 生成配置并启用插件
         run: |
           cd openwrt
-          # 1. 写入x86_64通用设备的基础架构配置
+          # 清除可能冲突的环境变量，避免干扰构建系统
+          unset TARGET_ARCH ARCH CFLAGS LDFLAGS
+          
+          # 写入 x86_64 通用设备基础架构配置
           cat > .config << EOF
           CONFIG_TARGET_x86=y
           CONFIG_TARGET_x86_64=y
           CONFIG_TARGET_x86_64_DEVICE_generic=y
           EOF
-          # 2. 自动编译配置工具并生成完整的默认配置
+          
+          # 编译配置工具并生成完整默认配置
           make defconfig V=s
-          # 3. 启用当前插件为模块编译
+          
+          # 启用自定义插件为模块编译
           ./scripts/config --set CONFIG_PACKAGE_$PLUGIN_NAME m
-          # 4. 重新校验并补全所有依赖配置
+          
+          # 重新校验补全所有依赖配置
           make defconfig V=s
 
       - name: 编译插件（输出详细日志）
         run: |
           cd openwrt
+          unset TARGET_ARCH ARCH CFLAGS LDFLAGS
           make package/custom/$PLUGIN_NAME/clean
           make package/custom/$PLUGIN_NAME/compile -j$(nproc) V=s
 
@@ -73,5 +81,5 @@ jobs:
       - name: 上传编译结果
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.PLUGIN_NAME }}_${{ env.TARGET_ARCH }}_APK
+          name: ${{ env.PLUGIN_NAME }}_${{ env.ARCHIVE_ARCH }}_APK
           path: output/
