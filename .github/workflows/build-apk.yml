@@ -38,47 +38,57 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: 自动定位并复制插件（自适应目录结构）
+      - name: 部署插件并校验结构
         run: |
           cd openwrt
           mkdir -p package/custom
-          
-          # 自动查找 Makefile 所在的目录
+
+          # 查看检出的源码完整结构
+          echo "=== 检出的插件源码完整结构 ==="
+          find ../plugin -type f | head -50
+
+          # 查找 Makefile 位置
           MAKEFILE_PATH=$(find ../plugin -name Makefile | head -n 1)
           if [ -z "$MAKEFILE_PATH" ]; then
-            echo "错误：在 plugin 目录中未找到 Makefile 文件"
-            echo "=== plugin 目录完整结构 ==="
-            find ../plugin -type f
+            echo "❌ 未找到 Makefile 文件"
             exit 1
           fi
-          
-          # 获取 Makefile 所在的父目录（即插件源码根目录）
-          PLUGIN_SRC_DIR=$(dirname "$MAKEFILE_PATH")
-          echo "找到插件源码目录：$PLUGIN_SRC_DIR"
-          echo "=== 插件目录内容 ==="
-          ls -la "$PLUGIN_SRC_DIR"
-          
-          # 复制到标准目标位置
-          cp -rf "$PLUGIN_SRC_DIR" package/custom/$PLUGIN_NAME
-          
-          # 最终验证
-          echo "=== 目标目录验证 ==="
-          ls -la package/custom/$PLUGIN_NAME/Makefile
+          echo "✅ 找到 Makefile: $MAKEFILE_PATH"
+
+          # 提取插件根目录
+          PLUGIN_SRC=$(dirname "$MAKEFILE_PATH")
+          echo "✅ 插件根目录: $PLUGIN_SRC"
+
+          # 清理旧目录并复制
+          rm -rf package/custom/$PLUGIN_NAME
+          cp -rf "$PLUGIN_SRC" package/custom/$PLUGIN_NAME
+
+          # 校验目标目录和 Makefile
+          echo "=== 目标目录文件列表 ==="
+          ls -la package/custom/$PLUGIN_NAME/
+          echo "=== Makefile 前 20 行 ==="
+          head -20 package/custom/$PLUGIN_NAME/Makefile
 
       - name: 生成配置并启用插件
         run: |
           cd openwrt
           unset TARGET_ARCH ARCH CFLAGS CXXFLAGS LDFLAGS
-          
+
           cat > .config << EOF
           CONFIG_TARGET_x86=y
           CONFIG_TARGET_x86_64=y
           CONFIG_TARGET_x86_64_DEVICE_generic=y
           EOF
-          
+
           make defconfig V=s
+
+          # 追加插件启用配置
           echo "CONFIG_PACKAGE_$PLUGIN_NAME=m" >> .config
           make defconfig V=s
+
+          # 校验配置是否生效
+          echo "=== 配置项校验 ==="
+          grep -i "adguardhome" .config || echo "❌ 配置中未找到 adguardhome 相关项"
 
       - name: 编译插件（单线程详细日志）
         run: |
