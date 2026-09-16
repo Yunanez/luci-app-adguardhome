@@ -8,7 +8,6 @@ on:
 env:
   PLUGIN_NAME: luci-app-adguardhome
   IStoreOS_BRANCH: istoreos-25.12
-  # 目标架构：x86_64 对应 x86 软路由；aarch64 对应 ARM 机型（R2S/R4S/R5S等）
   TARGET_ARCH: x86_64
 
 jobs:
@@ -20,13 +19,13 @@ jobs:
         with:
           path: plugin
 
-      - name: 安装完整编译依赖
+      - name: 安装完整编译依赖（补全flex/bison）
         run: |
           sudo apt update
           sudo apt install -y build-essential ccache ecj fastjar file g++ gawk \
           gettext git java-propose-classpath libelf-dev libncurses-dev \
           libssl-dev libtool python3 python3-setuptools rsync subversion \
-          swig unzip wget xsltproc zlib1g-dev
+          swig unzip wget xsltproc zlib1g-dev flex bison autoconf automake pkg-config
 
       - name: 拉取 iStoreOS 25.12 源码
         run: |
@@ -43,27 +42,21 @@ jobs:
           mkdir -p openwrt/package/custom
           cp -r plugin/$PLUGIN_NAME openwrt/package/custom/
 
-      - name: 生成基础架构配置
+      - name: 生成配置并启用插件
         run: |
           cd openwrt
-          # 写入 x86_64 目标架构基础配置
-          cat > .config << EOF
-          CONFIG_TARGET_x86=y
-          CONFIG_TARGET_x86_64=y
-          CONFIG_TARGET_x86_64_DEVICE_generic=y
-          EOF
-          # 生成完整默认配置
+          # 1. 生成默认基础配置（自动编译配置工具conf）
           make defconfig
-
-      - name: 启用插件编译
-        run: |
-          cd openwrt
-          # 用官方配置工具启用插件为模块编译
+          # 2. 显式指定目标架构为x86_64通用设备
+          ./scripts/config --set CONFIG_TARGET_x86 y
+          ./scripts/config --set CONFIG_TARGET_x86_64 y
+          ./scripts/config --set CONFIG_TARGET_x86_64_DEVICE_generic y
+          # 3. 启用当前插件为模块编译
           ./scripts/config --set CONFIG_PACKAGE_$PLUGIN_NAME m
-          # 重新校验配置
+          # 4. 重新生成完整配置，自动补全所有依赖项
           make defconfig
 
-      - name: 编译插件
+      - name: 编译插件（输出详细日志）
         run: |
           cd openwrt
           make package/custom/$PLUGIN_NAME/clean
