@@ -12,7 +12,7 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04  # 改用官方推荐的22.04，解决工具链兼容问题
+    runs-on: ubuntu-22.04
     steps:
       - name: 检出当前插件源码
         uses: actions/checkout@v4
@@ -43,16 +43,20 @@ jobs:
           mkdir -p openwrt/package/custom
           cp -r plugin/$PLUGIN_NAME openwrt/package/custom/
 
-      - name: 生成官方标准配置并启用插件
+      - name: 生成配置并启用插件
         run: |
           cd openwrt
-          # 1. 直接加载官方x86_64架构默认配置，最规范稳定
-          cp target/linux/x86/64/defconfig .config
-          # 2. 补全完整配置并编译配置工具
+          # 1. 写入x86_64通用设备的基础架构配置
+          cat > .config << EOF
+          CONFIG_TARGET_x86=y
+          CONFIG_TARGET_x86_64=y
+          CONFIG_TARGET_x86_64_DEVICE_generic=y
+          EOF
+          # 2. 自动编译配置工具并生成完整的默认配置
           make defconfig V=s
-          # 3. 启用自定义插件为模块编译
+          # 3. 启用当前插件为模块编译
           ./scripts/config --set CONFIG_PACKAGE_$PLUGIN_NAME m
-          # 4. 重新校验补全所有依赖
+          # 4. 重新校验并补全所有依赖配置
           make defconfig V=s
 
       - name: 编译插件（输出详细日志）
